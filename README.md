@@ -2,6 +2,8 @@
 
 Une application web de Machine Learning pour prédire si un client va répondre positivement à une offre d'assurance véhicule.
 
+**L'application entraîne automatiquement le modèle au premier lancement!**
+
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.24+-red)
 ![scikit-learn](https://img.shields.io/badge/scikit-learn-1.2+-green)
@@ -13,19 +15,19 @@ Cette application utilise des algorithmes de Machine Learning pour:
 - Analyser les facteurs qui influencent la décision du client
 - Visualiser les performances du modèle
 
+L'application **entraîne automatiquement le modèle** lors du premier lancement si celui-ci n'existe pas.
+
 ## 🏗️ Architecture du Projet
 
 ```
-├── streamlit_app.py      # Application principale Streamlit
-├── train_model.py        # Script d'entraînement du modèle
-├── projetIA.py           # Script complet d'analyse et entraînement
+├── streamlit_app.py      # Application principale Streamlit (contient tout le code)
 ├── requirements.txt     # Dépendances Python
-├── auto-mpg.pkl          # Modèle entraîné (à générer)
 ├── merged_dataset.csv    # Dataset d'assurance
+├── auto-mpg.pkl          # Modèle entraîné (généré automatiquement)
 └── README.md            # Ce fichier
 ```
 
-## ⚡ Installation Locale
+## ⚡ Installation et Lancement
 
 ### 1. Cloner le dépôt
 ```
@@ -52,20 +54,15 @@ bash
 pip install -r requirements.txt
 ```
 
-### 4. Générer le modèle
-Avant de lancer l'application, vous devez entraîner le modèle:
-```
-bash
-python train_model.py
-```
-
-Cela créera le fichier `auto-mpg.pkl` nécessaire au fonctionnement de l'application.
-
-### 5. Lancer l'application
-```
-bash
+### 4. Lancer l'application
+```bash
 streamlit run streamlit_app.py
 ```
+
+**L'application va:**
+- Détecter si le modèle existe
+- Si nécessaire, entraîner automatiquement le modèle (environ 30 secondes)
+- Lancer l'interface web
 
 L'application s'ouvrira automatiquement dans votre navigateur à l'adresse: `http://localhost:8501`
 
