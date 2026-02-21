@@ -5,6 +5,8 @@ APPLICATION STREAMLIT: Segmentation de Marché dans l'Assurance
 Cette application web permet de prédire si un client va répondre
 positivement à une offre d'assurance véhicule.
 
+L'application entraine automatiquement le modèle si nécessaire.
+
 Pour lancer l'application:
     streamlit run streamlit_app.py
 ================================================================================
@@ -14,10 +16,19 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
-                           f1_score, confusion_matrix, roc_curve, auc)
+                           f1_score, confusion_matrix, roc_curve, auc,
+                           roc_auc_score)
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import GradientBoostingClassifier
+import warnings
+warnings.filterwarnings('ignore')
 
 # ================================================================================
 # CONFIGURATION DE LA PAGE
@@ -30,24 +41,113 @@ st.set_page_config(
 )
 
 # ================================================================================
+# CONSTANTES
+# ================================================================================
+
+MODEL_FILE = 'auto-mpg.pkl'
+DATASET_FILE = 'merged_dataset.csv'
+
+# ================================================================================
+# FONCTIONS D'ENTRAÎNEMENT DU MODÈLE
+# ================================================================================
+
+def train_model():
+    """Entraine le modèle et le sauvegarde"""
+    with st.spinner('🔄 Entraînement du modèle en cours...'):
+        # Chargement du dataset
+        df = pd.read_csv(DATASET_FILE)
+        
+        # Filtrer seulement les données d'entraînement
+        df = df[df['dataset_type'] == 'train'].copy()
+        df = df.drop(['id', 'dataset_type'], axis=1)
+        
+        # Encodage des variables catégorielles
+        le_gender = LabelEncoder()
+        le_vehicle_age = LabelEncoder()
+        le_vehicle_damage = LabelEncoder()
+        
+        df['Gender'] = le_gender.fit_transform(df['Gender'])
+        df['Vehicle_Age'] = le_vehicle_age.fit_transform(df['Vehicle_Age'])
+        df['Vehicle_Damage'] = le_vehicle_damage.fit_transform(df['Vehicle_Damage'])
+        
+        # Supprimer les lignes avec des valeurs manquantes
+        df = df.dropna()
+        
+        # Features et target
+        X = df.drop('Response', axis=1)
+        y = df['Response']
+        
+        # Échantillonner pour accélération
+        if len(X) > 20000:
+            X_sample, _, y_sample, _ = train_test_split(X, y, train_size=20000, stratify=y, random_state=42)
+        else:
+            X_sample, y_sample = X, y
+        
+        # Train/test split
+        X_train, X_test, y_train, y_test = train_test_split(X_sample, y_sample, test_size=0.2, random_state=42, stratify=y_sample)
+        
+        # Normalisation
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        # Entraînement du modèle Gradient Boosting
+        model = GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42)
+        model.fit(X_train_scaled, y_train)
+        
+        # Calcul des métriques sur le test set
+        y_pred = model.predict(X_test_scaled)
+        
+        metrics = {
+            'Accuracy': accuracy_score(y_test, y_pred),
+            'Precision': precision_score(y_test, y_pred, zero_division=0),
+            'Recall': recall_score(y_test, y_pred, zero_division=0),
+            'F1': f1_score(y_test, y_pred, zero_division=0),
+            'ROC-AUC': roc_auc_score(y_test, model.predict_proba(X_test_scaled)[:, 1])
+        }
+        
+        # Entraîner le modèle final sur toutes les données
+        scaler_full = StandardScaler()
+        X_scaled_full = scaler_full.fit_transform(X_sample)
+        final_model = GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42)
+        final_model.fit(X_scaled_full, y_sample)
+        
+        # Sauvegarder le modèle
+        model_data = {
+            'model': final_model,
+            'scaler': scaler_full,
+            'features': list(X.columns),
+            'best_model_name': 'Gradient Boosting',
+            'metrics': metrics
+        }
+        
+        with open(MODEL_FILE, 'wb') as f:
+            pickle.dump(model_data, f)
+        
+    return model_data
+
+# ================================================================================
 # CHARGEMENT DU MODÈLE
 # ================================================================================
 
 @st.cache_resource
-def load_model():
-    with open('auto-mpg.pkl', 'rb') as f:
-        return pickle.load(f)
+def load_or_train_model():
+    # Vérifier si le fichier existe
+    if os.path.exists(MODEL_FILE):
+        with open(MODEL_FILE, 'rb') as f:
+            return pickle.load(f)
+    else:
+        # Entraîner le modèle si inexistant
+        return train_model()
 
-try:
-    model_data = load_model()
-    model = model_data['model']
-    scaler = model_data['scaler']
-    features = model_data['features']
-    best_model_name = model_data['best_model_name']
-    metrics = model_data['metrics']
-except:
-    st.error("❌ Modèle non trouvé. Veuillez d'abord exécuter projetIA.py")
-    st.stop()
+# Chargement ou entraînement du modèle
+model_data = load_or_train_model()
+
+model = model_data['model']
+scaler = model_data['scaler']
+features = model_data['features']
+best_model_name = model_data['best_model_name']
+metrics = model_data['metrics']
 
 # ================================================================================
 # EN-TÊTE
@@ -116,21 +216,17 @@ with col2:
 
 # ================================================================================
 # PRÉDICTION
-# ================================================================================
+# =============================================================================
 
 # Encoder les valeurs
 gender_encoded = 1 if gender == "Male" else 0
 vehicle_age_encoded = {"< 1 Year": 0, "1-2 Year": 1, "> 2 Years": 2}[vehicle_age]
 vehicle_damage_encoded = 1 if vehicle_damage == "Yes" else 0
 
-# Créer le vecteur de features - ORDRE CORRECT
+# Créer le vecteur de features
 input_data = np.array([[gender_encoded, age, driving_license, region_code, 
                         previously_insured, vehicle_age_encoded, vehicle_damage_encoded,
                         annual_premium, policy_sales_channel, vintage]])
-
-# Afficher les features pour débogage
-st.write("Features attendue:", features)
-st.write("Input shape:", input_data.shape)
 
 # Normaliser les données
 input_scaled = scaler.transform(input_data)
@@ -169,7 +265,7 @@ if st.button("🔮 Prédire", type="primary"):
 
 # ================================================================================
 # ANALYSE DES DONNÉES
-# ================================================================================
+# =============================================================================
 
 st.markdown("---")
 st.header("📊 Analyse des données")
