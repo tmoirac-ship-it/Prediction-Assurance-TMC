@@ -340,3 +340,4 @@ st.markdown("""
     <p>Projet ML - Segmentation de Marché dans l'Assurance</p>
     <p>Créé avec Streamlit et scikit-learn</p>
 </div>
+""", unsafe_allow_html=True)
