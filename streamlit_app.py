@@ -1,3 +1,7 @@
+"""
+APPLICATION STREAMLIT: Segmentation de Marché Assurance
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,11 +10,11 @@ import os
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import GradientBoostingClassifier
 import warnings
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # ==============================================================================
 # CONFIGURATION
@@ -22,57 +26,69 @@ MODEL_FILE = "model.pkl"
 DATASET_FILE = "merged_dataset.csv"
 
 # ==============================================================================
-# ENTRAINEMENT
+# ENTRAINEMENT DU MODELE
 # ==============================================================================
 
 def train_model():
-    df = pd.read_csv(DATASET_FILE)
-    df = df[df['dataset_type'] == 'train'].copy()
-    df = df.drop(['id', 'dataset_type'], axis=1)
 
-    # Encodage
-    le = LabelEncoder()
-    df['Gender'] = le.fit_transform(df['Gender'])
-    df['Vehicle_Age'] = le.fit_transform(df['Vehicle_Age'])
-    df['Vehicle_Damage'] = le.fit_transform(df['Vehicle_Damage'])
+    with st.spinner("🔄 Entraînement du modèle en cours..."):
 
-    df = df.dropna()
+        df = pd.read_csv(DATASET_FILE)
 
-    X = df.drop('Response', axis=1)
-    y = df['Response']
+        # Supprimer colonne id si elle existe
+        if "id" in df.columns:
+            df = df.drop("id", axis=1)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+        # Encodage manuel
+        df["Gender"] = df["Gender"].map({"Male": 1, "Female": 0})
+        df["Vehicle_Age"] = df["Vehicle_Age"].map({
+            "< 1 Year": 0,
+            "1-2 Year": 1,
+            "> 2 Years": 2
+        })
+        df["Vehicle_Damage"] = df["Vehicle_Damage"].map({"Yes": 1, "No": 0})
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+        df = df.dropna()
 
-    model = GradientBoostingClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train_scaled, y_train)
+        X = df.drop("Response", axis=1)
+        y = df["Response"]
 
-    y_pred = model.predict(X_test_scaled)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y,
+            test_size=0.2,
+            random_state=42,
+            stratify=y
+        )
 
-    metrics = {
-        "Accuracy": accuracy_score(y_test, y_pred),
-        "Precision": precision_score(y_test, y_pred),
-        "Recall": recall_score(y_test, y_pred),
-        "F1": f1_score(y_test, y_pred),
-        "ROC-AUC": roc_auc_score(y_test, model.predict_proba(X_test_scaled)[:, 1])
-    }
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
 
-    model_data = {
-        "model": model,
-        "scaler": scaler,
-        "features": list(X.columns),
-        "metrics": metrics
-    }
+        model = GradientBoostingClassifier(random_state=42)
+        model.fit(X_train_scaled, y_train)
 
-    with open(MODEL_FILE, "wb") as f:
-        pickle.dump(model_data, f)
+        y_pred = model.predict(X_test_scaled)
+
+        metrics = {
+            "Accuracy": accuracy_score(y_test, y_pred),
+            "Precision": precision_score(y_test, y_pred, zero_division=0),
+            "Recall": recall_score(y_test, y_pred, zero_division=0),
+            "F1": f1_score(y_test, y_pred, zero_division=0),
+            "ROC-AUC": roc_auc_score(y_test, model.predict_proba(X_test_scaled)[:, 1])
+        }
+
+        model_data = {
+            "model": model,
+            "scaler": scaler,
+            "features": list(X.columns),
+            "metrics": metrics
+        }
+
+        with open(MODEL_FILE, "wb") as f:
+            pickle.dump(model_data, f)
 
     return model_data
+
 
 # ==============================================================================
 # CHARGEMENT
@@ -83,7 +99,9 @@ def load_model():
     if os.path.exists(MODEL_FILE):
         with open(MODEL_FILE, "rb") as f:
             return pickle.load(f)
-    return train_model()
+    else:
+        return train_model()
+
 
 model_data = load_model()
 model = model_data["model"]
@@ -96,7 +114,7 @@ metrics = model_data["metrics"]
 
 st.title("🚗 Segmentation de Marché - Assurance")
 
-st.sidebar.header("📊 Performances")
+st.sidebar.header("📊 Performances du modèle")
 for k, v in metrics.items():
     st.sidebar.metric(k, f"{v:.2%}")
 
@@ -117,6 +135,10 @@ with col2:
     annual_premium = st.number_input("Prime annuelle", 1000, 200000, 30000)
     policy_sales_channel = st.number_input("Canal vente", 1, 200, 152)
     vintage = st.slider("Ancienneté client", 10, 300, 200)
+
+# ==============================================================================
+# PREDICTION
+# ==============================================================================
 
 if st.button("🔮 Prédire"):
 
@@ -143,4 +165,15 @@ if st.button("🔮 Prédire"):
     fig, ax = plt.subplots()
     ax.barh(["Non", "Oui"], proba)
     ax.set_xlim(0, 1)
+    ax.set_xlabel("Probabilité")
     st.pyplot(fig)
+
+# ==============================================================================
+# FOOTER
+# ==============================================================================
+
+st.markdown("---")
+st.markdown(
+    "<center>Projet Machine Learning - Segmentation Assurance 🚗</center>",
+    unsafe_allow_html=True
+)
